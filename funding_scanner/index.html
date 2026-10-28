@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FundingCarry — Public Funding Scanner</title>
+  <style>
+    :root{color-scheme:dark;--bg:#08121d;--panel:#101f2d;--line:#294357;--muted:#9bb0c1;--text:#e4edf4;--good:#55d99a;--bad:#ff788b;--accent:#42c8c3}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,sans-serif}
+    main{max-width:1320px;margin:36px auto;padding:0 18px}.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+    header{padding:24px;border-bottom:1px solid var(--line)}h1{font-size:25px;margin:0 0 6px}p,.meta{color:var(--muted);margin:0}.toolbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:20px}
+    input,button{background:#091724;color:var(--text);border:1px solid var(--line);border-radius:9px;padding:10px 13px;font:inherit}input{min-width:220px}button{cursor:pointer}button.active{border-color:var(--accent);color:var(--accent)}
+    .status{margin-left:auto;color:var(--muted)}.table-wrap{overflow:auto}table{border-collapse:collapse;width:100%;min-width:850px}th,td{text-align:left;padding:14px 16px;border-bottom:1px solid var(--line);white-space:nowrap}th{color:var(--muted);font-weight:600}td small{display:block;color:var(--muted)}.positive{color:var(--good)}.negative{color:var(--bad)}.empty{padding:50px;text-align:center;color:var(--muted)}footer{padding:16px 24px;color:var(--muted);font-size:13px}
+  </style>
+</head>
+<body><main><section class="card">
+  <header><h1>Funding rate comparison</h1><p>Read-only public perpetual-market data · cumulative historical rates · incomplete venue history is not treated as zero.</p>
+    <div class="toolbar"><input id="search" type="search" placeholder="Filter asset"><div id="periods"><button data-period="7" class="active">7 days</button><button data-period="14">14 days</button><button data-period="30">30 days</button></div><button id="refresh">Refresh</button><span class="status" id="status">Loading…</span></div>
+  </header>
+  <div class="table-wrap"><table><thead><tr><th>Asset</th><th>Venues available</th><th>Best historical spread</th><th>Suggested historical direction</th><th>Updated</th></tr></thead><tbody id="rows"><tr><td colspan="5" class="empty">Waiting for the first complete scan…</td></tr></tbody></table></div>
+  <footer>Historical funding rates are not forecasts or guaranteed returns. Funding cadence, market liquidity, execution costs, basis risk, and API data gaps can materially change results.</footer>
+</section></main>
+<script>
+let snapshot=null,period='7';
+const $=id=>document.getElementById(id),escapeHtml=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function render(){const filter=$('search').value.trim().toUpperCase(),rows=(snapshot?.rows||[]).filter(row=>String(row.symbol||'').toUpperCase().includes(filter));$('rows').innerHTML=rows.length?rows.map(row=>{const spread=row.spreads?.[period],value=Number(spread?.spread);return `<tr><td><strong>${escapeHtml(row.symbol)}</strong></td><td>${Number(row.available_count)||0} / ${(snapshot.platforms||[]).length}<small>${(snapshot.platforms||[]).filter(name=>row.venues?.[name]?.periods?.[period]?.is_complete).map(escapeHtml).join(', ')||'No complete history'}</small></td><td class="${Number.isFinite(value)?(value>=0?'positive':'negative'):''}">${Number.isFinite(value)?(value*100).toFixed(4)+'%':'—'}</td><td>${escapeHtml(spread?.direction||'Insufficient comparable data')}</td><td>${escapeHtml(snapshot.generated_at||'—')}</td></tr>`}).join(''):`<tr><td colspan="5" class="empty">No comparable data for this filter.</td></tr>`}
+async function load(){ $('status').textContent='Refreshing…';try{const response=await fetch('/api/funding-history',{cache:'no-store'});if(!response.ok)throw new Error(`HTTP ${response.status}`);snapshot=await response.json();$('status').textContent=`${snapshot.rows?.length||0} assets · ${snapshot.platforms?.length||0} venues`;render()}catch(error){$('status').textContent=`Unavailable: ${error.message}`}}
+document.querySelectorAll('#periods button').forEach(button=>button.onclick=()=>{period=button.dataset.period;document.querySelectorAll('#periods button').forEach(item=>item.classList.toggle('active',item===button));render()});$('search').oninput=render;$('refresh').onclick=load;load();setInterval(load,5*60*1000);
+</script></body></html>
