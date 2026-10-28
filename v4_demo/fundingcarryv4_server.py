@@ -49,6 +49,9 @@ _scanner_cache_lock = threading.Lock()
 _trade_asset_lock = threading.Lock()
 _execution_lock = threading.Lock()
 _guard_lock = threading.Lock()
+# Coordinate two-leg submission and guard snapshots within this process.
+# The portfolio edition remains read-only; this documents production design.
+_trade_guard_coordination_lock = threading.RLock()
 _ticker_lock = threading.Lock()
 _rule_lock = threading.Lock()
 _ticker_cache: tuple[float, dict[str, Decimal]] = (0.0, {})
@@ -1310,6 +1313,11 @@ def create_preflight(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def submit_preflight(payload: dict[str, Any]) -> dict[str, Any]:
+    with _trade_guard_coordination_lock:
+        return _submit_preflight_coordinated(payload)
+
+
+def _submit_preflight_coordinated(payload: dict[str, Any]) -> dict[str, Any]:
     if not live_trading_enabled():
         raise PermissionError("公开作品集副本为只读模式：实盘下单及账户写操作已永久禁用")
     token = str(payload.get("preflight_token", ""))
@@ -2794,6 +2802,11 @@ def _recover_acting_guard(
 
 
 def _guard_cycle(client: GateCrossExClient) -> None:
+    with _trade_guard_coordination_lock:
+        _guard_cycle_coordinated(client)
+
+
+def _guard_cycle_coordinated(client: GateCrossExClient) -> None:
     _recover_pending_executions(client)
     with _guard_lock:
         guards = _json_store_read(GUARD_STATE_PATH, {})
